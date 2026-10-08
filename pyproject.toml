@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "exprunflow"
+version = "0.1.0"
+description = "Parameterize and run scientific experiment flows with exp/runs."
+requires-python = ">=3.10"
+dependencies = ["pyyaml", "numpy", "torch"]
+
+[project.optional-dependencies]
+flow = ["papermill>=2.7,<3", "tqdm>=4.67,<5", "ipython"]
+
+[tool.setuptools]
+packages = ["exprunflow"]

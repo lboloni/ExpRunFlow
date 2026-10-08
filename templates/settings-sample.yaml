@@ -1,0 +1,10 @@
+# A sample of the machine-specific settings file, with the settings used by
+# the exp/run framework. A project adds its own settings to this file.
+
+# the location where the system dependent experiment config files are
+"experiment_system_dependent_dir": '~/WORK/Project/cfg/experiment-config'
+# the location where the experiment data is put
+# the data of an exp/run goes to experiment_data/experiment/run
+"experiment_data": '~/WORK/Project/data'
+# the directory where the flow workspaces go on this machine
+"flows_path": '~/WORK/Project-Flows'
