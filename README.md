@@ -6,6 +6,7 @@ It is shared by the [BerryPicker](https://github.com/lboloni/BerryPicker) and [W
 * `exprunflow/exp_run_config.py`: the `Config` singleton and the `Experiment` (exp/run) objects. See [docs/DESIGN-ExpRun.md](docs/DESIGN-ExpRun.md).
 * `exprunflow/flow.py`: the helpers of the flow notebooks, which run a queue of stage notebooks with Papermill and report on the results. See [docs/DESIGN-Flows.md](docs/DESIGN-Flows.md).
 * `exprunflow/reproducibility.py`: seeding the RNGs of a run.
+* `exprunflow/replication.py`, `metrics.py`, `aggregate.py`, `plots.py`: running an experiment as independent replications over random seeds, aggregating them into tidy tables with confidence intervals, and drawing them. See [docs/DESIGN-Replication.md](docs/DESIGN-Replication.md).
 * `templates/`: samples of the main and machine-specific settings files.
 
 ## Installation
@@ -16,7 +17,11 @@ Check out the repository next to the project, and install it in the project's vi
 pip install -e ../ExpRunFlow[flow]
 ```
 
-The `flow` extra installs Papermill, tqdm and IPython, which the flow helpers need.
+The `flow` extra installs Papermill, tqdm and IPython, which the flow helpers need. The `analysis` extra (pandas, scipy) is needed by `exprunflow.aggregate`, and the `plots` extra (matplotlib) by `exprunflow.plots`:
+
+```shell
+pip install -e ../ExpRunFlow[flow,analysis,plots]
+```
 
 ## Use in a project
 
@@ -33,5 +38,5 @@ Config.SRC_ROOT = pathlib.Path(__file__).resolve().parent
 ## Tests
 
 ```shell
-python -m pytest tests
+python -m unittest discover -s tests
 ```
