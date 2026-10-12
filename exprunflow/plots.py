@@ -49,18 +49,27 @@ def _error(row):
 
 
 def _grouped(tables, metrics, x, color, output_path, draw, x_values, color_values, lookup, colors, where,
-             metric_labels, start_at_zero):
-    """The layout of plot_bars and plot_ranges: one panel per metric, the values of x on the x axis, one
-    element per value of color"""
+             metric_labels, start_at_zero, panels=None):
+    """The layout of plot_bars, plot_ranges and plot_boxes: one panel per metric, the values of x on the x
+    axis, one element per value of color. With panels, a list of {"where": {...}, "title": ...}, one panel
+    per entry instead, for a single metric: its where is added to the common one, and the panels share
+    their vertical axis, so that they can be compared directly."""
     lookup, colors, metric_labels = lookup or {}, colors or DEFAULT_COLORS, metric_labels or {}
-    summary = select(tables["summary"], where)
-    replications = select(tables["replications"], where)
-    x_values = _values(summary, x, x_values)
-    color_values = _values(summary, color, color_values)
+    if panels:
+        if len(metrics) != 1:
+            raise ValueError("Panels by where filter need exactly one metric")
+        specs = [(metrics[0], {**(where or {}), **(panel.get("where") or {})}, panel.get("title"))
+                 for panel in panels]
+    else:
+        specs = [(metric, where, None) for metric in metrics]
+    x_values = _values(select(tables["summary"], where), x, x_values)
+    color_values = _values(select(tables["summary"], where), color, color_values)
     width = 0.8 / len(color_values)
     rng = np.random.default_rng(0)  # the jitter of the points
-    fig, axes = plt.subplots(1, len(metrics), figsize=(3.2 * len(metrics), 3), squeeze=False)
-    for ax, metric in zip(axes[0], metrics):
+    fig, axes = plt.subplots(1, len(specs), figsize=(3.2 * len(specs), 3), squeeze=False, sharey=bool(panels))
+    for index, (ax, (metric, panel_where, title)) in enumerate(zip(axes[0], specs)):
+        summary = select(tables["summary"], panel_where)
+        replications = select(tables["replications"], panel_where)
         for i, c in enumerate(color_values):
             for k, xv in enumerate(x_values):
                 rows = select(summary, metric=metric, **{x: xv, color: c})
@@ -74,26 +83,33 @@ def _grouped(tables, metrics, x, color, output_path, draw, x_values, color_value
         ax.set_xticks(range(len(x_values)))
         ax.set_xticklabels([lookup.get(v, v) for v in x_values])
         ax.set_xlim(-0.5, len(x_values) - 0.5)
-        ax.set_ylabel(metric_labels.get(metric, metric))
-        if start_at_zero:
+        if title:
+            ax.set_title(title, fontsize=9)
+        if not panels or index == 0:
+            ax.set_ylabel(metric_labels.get(metric, metric))
+    # after every panel is drawn, so that a shared axis keeps the data of all of them
+    if start_at_zero:
+        for ax in axes[0]:
             ax.set_ylim(bottom=0)
-    axes[0][0].legend(handles=[Patch(facecolor=colors[i % len(colors)], alpha=0.7, label=lookup.get(c, c))
-                               for i, c in enumerate(color_values)], fontsize=8)
-    fig.tight_layout()
+    # the legend above the panels, in one row, so that it never covers the data
+    fig.legend(handles=[Patch(facecolor=colors[i % len(colors)], alpha=0.7, label=lookup.get(c, c))
+                        for i, c in enumerate(color_values)], fontsize=8, loc="upper center",
+               ncol=len(color_values), frameon=False, handlelength=1.2, columnspacing=1.0)
+    fig.tight_layout(rect=(0, 0, 1, 0.92))
     return save_figure(fig, output_path)
 
 
 def plot_bars(tables, metrics, x, color, output_path, x_values=None, color_values=None, lookup=None,
-              colors=None, where=None, metric_labels=None):
+              colors=None, where=None, metric_labels=None, panels=None):
     """Grouped bars: one panel per metric, the mean as a bar with its 95% CI, and the replications as dots"""
     def draw(ax, position, width, row, color_value, values):
         ax.bar(position, row["mean"], width, color=color_value, yerr=_error(row), capsize=3, alpha=0.85)
     return _grouped(tables, metrics, x, color, output_path, draw, x_values, color_values, lookup, colors,
-                    where, metric_labels, start_at_zero=True)
+                    where, metric_labels, start_at_zero=True, panels=panels)
 
 
 def plot_ranges(tables, metrics, x, color, output_path, x_values=None, color_values=None, lookup=None,
-                colors=None, where=None, metric_labels=None):
+                colors=None, where=None, metric_labels=None, panels=None, start_at_zero=False):
     """Box and whiskers in the layout of plot_bars: the box is the 95% CI of the mean, with a line at the
     mean; the whiskers are the range of the replications; the dots the replications. The box and the
     whiskers are drawn independently: with few replications the CI can be wider than the range."""
@@ -110,14 +126,15 @@ def plot_ranges(tables, metrics, x, color, output_path, x_values=None, color_val
             ax.plot([position - box / 4, position + box / 4], [end, end], color="black", linewidth=1)
         ax.update_datalim([(position, low), (position, high), (position, row["min"]), (position, row["max"])])
     return _grouped(tables, metrics, x, color, output_path, draw, x_values, color_values, lookup, colors,
-                    where, metric_labels, start_at_zero=False)
+                    where, metric_labels, start_at_zero=start_at_zero, panels=panels)
 
 
 def plot_boxes(tables, metrics, x, color, output_path, x_values=None, color_values=None, lookup=None,
-               colors=None, where=None, metric_labels=None):
+               colors=None, where=None, metric_labels=None, panels=None, start_at_zero=False):
     """Standard box plots in the layout of plot_bars: the box spans the quartiles of the replications, with a
     line at the median; the whiskers reach the most extreme replications within 1.5 times the interquartile
-    range of the box; the dots are the replications, the outliers among them"""
+    range of the box; the dots are the replications, the outliers among them. With panels, one panel per
+    where filter, on a shared vertical axis (_grouped); start_at_zero starts the axis at zero."""
     def draw(ax, position, width, row, color_value, values):
         box = ax.boxplot([list(values)], positions=[position], widths=0.7 * width, patch_artist=True,
                          showfliers=False, manage_ticks=False)
@@ -128,7 +145,7 @@ def plot_boxes(tables, metrics, x, color, output_path, x_values=None, color_valu
         for line in box["whiskers"] + box["caps"]:
             line.set(color="black", linewidth=1)
     return _grouped(tables, metrics, x, color, output_path, draw, x_values, color_values, lookup, colors,
-                    where, metric_labels, start_at_zero=False)
+                    where, metric_labels, start_at_zero=start_at_zero, panels=panels)
 
 
 def plot_series(tables, metric, panel, color, output_path, panel_values=None, color_values=None, lookup=None,

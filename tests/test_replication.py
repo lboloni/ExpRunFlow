@@ -289,10 +289,12 @@ class TestAggregation(unittest.TestCase):
             plot_bars(tables, ["v"], "map", "approach", d / "bars.pdf")
             plot_ranges(tables, ["v"], "map", "approach", d / "ranges.pdf", where={"map": "one"})
             plot_boxes(tables, ["v"], "map", "approach", d / "boxes.pdf")
+            plot_boxes(tables, ["v"], "map", "approach", d / "panels.pdf", start_at_zero=True,
+                       panels=[{"where": {"map": "one"}, "title": "one"}, {"where": {}, "title": "all"}])
             plot_series(tables, "v", "map", "approach", d / "series.pdf")
             plot_paired(tables, "v", "map", "approach", d / "paired.pdf")
             self.assertEqual(sorted(p.name for p in d.iterdir()), sorted(
-                f"{n}.{e}" for n in ["bars", "ranges", "boxes", "series", "paired"] for e in ["pdf", "png"]))
+                f"{n}.{e}" for n in ["bars", "ranges", "boxes", "panels", "series", "paired"] for e in ["pdf", "png"]))
 
 
 class TestCompatibility(unittest.TestCase):
