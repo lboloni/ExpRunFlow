@@ -6,7 +6,7 @@
 - `exprunflow/aggregate.py`;
 - `exprunflow/plots.py`.
 
-There is also a template, `templates/Aggregate.ipynb`. The tests are in `tests/test_replication.py`. WaterberryFarms uses it for the MRMR comparisons (`WaterberryFarms/src/papers/y2027_mrmr/DESIGN-MultiSeedEvaluation.md`).
+There is also a template, `templates/Aggregate.ipynb`. The tests are in `tests/test_replication.py`. WaterberryFarms uses it for the MAREX comparisons (`WaterberryFarms/src/papers/y2027_marex/DESIGN-MultiSeedEvaluation.md`).
 
 The implementation differs from the proposal below in four points:
 - **A separate metrics module:** `save_metrics` and `load_metrics` are in `exprunflow/metrics.py`, which needs no optional dependency, so a run stage can write its metrics without the `analysis` extra.
@@ -33,7 +33,7 @@ The goal is not a general design-of-experiments engine. It is a small extension 
 
 - **Replications are ordinary expruns.** A replication is a run variant written into the flow workspace. It can be inspected, rerun and opened by its name like any other run.
 - **The declaration is data.** The base runs and the seed values are listed in one exp/run, the *aggregate*. The flow that generates the replications and the notebook that aggregates them read the same declaration, so they cannot disagree.
-- **Names are determined by the seeds.** `clustered-mrmr-m3-b2` is the same replication in every flow that declares it. Seed lists can grow without renaming or rerunning the existing replications.
+- **Names are determined by the seeds.** `clustered-marex-m3-b2` is the same replication in every flow that declares it. Seed lists can grow without renaming or rerunning the existing replications.
 - **Seeds are derived, never shared by accident.** Per-entity seeds (for each robot, for each training) are derived from the replication seed with `numpy.random.SeedSequence`, not by adding offsets.
 - **Common random numbers.** In a replication, every compared approach receives the same seeds, so the approaches can be compared replication by replication.
 - **A replication is a function of its seeds.** The library cannot enforce this, but it provides a check (Section 8), and the documentation makes it a stated requirement of a replicated stage.
@@ -45,26 +45,26 @@ The goal is not a general design-of-experiments engine. It is a small extension 
 
 | Term | Meaning |
 |---|---|
-| base run | a checked-in run of the replicated family, e.g. `mrmr2027-run/clustered-mrmr` |
+| base run | a checked-in run of the replicated family, e.g. `marex2027-run/clustered-marex` |
 | factor | a named source of randomness that is varied, e.g. `map-seed`, `behavior-seed`, `training-seed` |
 | factor value | one seed of a factor |
 | replication | one base run with one value of every factor |
 | applier | a project function that turns a factor value into the changes of the replication's exprun |
-| labels | the project's classification of a base run, e.g. `scenario: clustered`, `approach: mrmr` |
+| labels | the project's classification of a base run, e.g. `scenario: clustered`, `approach: marex` |
 | cell | the replications of one base run, i.e. one combination of labels; statistics are computed per cell |
 | cluster factor | a factor whose replications are not independent of each other, e.g. the behavior seeds that share one map |
 
 ## 1. Declaration
 
-The **aggregate exp/run**, in a family of the project (e.g. `mrmr2027-aggregate`), declares the replications:
+The **aggregate exp/run**, in a family of the project (e.g. `marex2027-aggregate`), declares the replications:
 
 ```yaml
-# data/expruns/mrmr2027-aggregate/icc-2027-replicated.yaml
-source-experiment: mrmr2027-run      # the family of the base runs
+# data/expruns/marex2027-aggregate/icc-2027-replicated.yaml
+source-experiment: marex2027-run      # the family of the base runs
 runs:                                # the base runs to replicate
-  - clustered-mrmr
+  - clustered-marex
   - clustered-mrse
-  - unclustered-mrmr
+  - unclustered-marex
 factors:                             # crossed: every value of every factor
   map-seed: {code: m, values: [1, 2, 3]}
   behavior-seed: {code: b, values: [1, 2, 3]}
@@ -82,10 +82,10 @@ input-to-notebook:
 The **flow exp/run** refers to the aggregate, as in WaterberryFarms today:
 
 ```yaml
-run-experiment: mrmr2027-run
-aggregate-experiment: mrmr2027-aggregate
+run-experiment: marex2027-run
+aggregate-experiment: marex2027-aggregate
 aggregate: icc-2027-replicated
-figure-experiment: mrmr2027-figure
+figure-experiment: marex2027-figure
 figures: [replicated-comparison, replicated-ranges, replicated-over-time, replicated-paired]
 ```
 
@@ -98,7 +98,7 @@ derive_seed(base, *keys) -> int
     # int(np.random.SeedSequence([base, *keys]).generate_state(1)[0])
 
 replication_name(base_run, factor_values, codes) -> str
-    # "clustered-mrmr-m3-b2": the base name, then -<code><value> in the declaration order
+    # "clustered-marex-m3-b2": the base name, then -<code><value> in the declaration order
 
 replication_names(aggregate) -> list[str]
     # every base run with every combination of factor values, in a fixed order
@@ -162,7 +162,7 @@ Every replication carries a block that identifies it, instead of the project-spe
 
 ```yaml
 replication:
-  base-run: clustered-mrmr
+  base-run: clustered-marex
   factors: {map-seed: 3, behavior-seed: 2}
 ```
 
@@ -178,6 +178,17 @@ The aggregation and the figures always run on all the replications.
 
 **Not detected:** changes of the code, and of other exp/runs that a replication reads. Reuse is therefore opt-in, for resuming the same experiment, and a full flow recomputes everything by default.
 
+### 2.6 Partial experiments, continued to more replications
+
+A partial experiment is a quick first pass, e.g. 3 replications per base run, to see the results and the figures in the paper. It is later continued to the full experiment, e.g. 20 replications, without repeating the runs it already has.
+
+- **The count:** `replications: N` in the aggregate exp/run runs only the first N factor combinations of every base run. Without it, every combination runs.
+- **The spread order:** with a count, `factor_combinations` lists the combinations with the **first factor varying fastest**. A prefix therefore covers as many values of the first factor as possible. With the factors `map-seed` (5 values) and `behavior-seed` (4 values), 3 replications are 3 different maps with the first behavior seed, rather than 3 behaviors on one map. Declare the factor whose spread matters most (usually the cluster factor) first.
+- **Continuing:** a larger count extends a smaller one, i.e. its first N combinations are the same. The replication names depend only on the factor values, so the replications of the partial experiment are the first ones of the larger one.
+- **Setting the count from a flow:** `replications: N` in the collection (e.g. from a flow notebook parameter) overrides the aggregate's count. `replication_entries` writes it into the aggregate in the flow workspace with `set_replications(family, run, count)`. The aggregation stage therefore loads exactly the replications that ran. The workspace's copy of the aggregate records the count of the last flow.
+- **The continuation command:** the same flow with a larger `replications` and `skip-completed: true`. Only the new replications and their new dependency variants run (Section 2.5); the aggregation and the figures run again on all of them.
+- **Other entries:** `without_completed(entries)` applies the same completion test to any flow entries, e.g. the single runs of a project's flow.
+
 ## 3. The metrics of a run (`exprunflow/aggregate.py`)
 
 A replicated stage writes `metrics.json` into its result directory:
@@ -191,10 +202,10 @@ load_metrics(data_dir) -> dict
 
 ```json
 {
-  "run": "clustered-mrmr-m3-b2",
-  "base-run": "clustered-mrmr",
+  "run": "clustered-marex-m3-b2",
+  "base-run": "clustered-marex",
   "factors": {"map-seed": 3, "behavior-seed": 2},
-  "labels": {"scenario": "clustered", "approach": "mrmr"},
+  "labels": {"scenario": "clustered", "approach": "marex"},
   "scalars": {"voi-absolute": 21099.0, "bytes-transmitted": 132056},
   "entities": {"con-1": {"group": "contractor", "voi-absolute": 8000.0}},
   "series": {"timestep": [9, 19, "..."], "voi-absolute": ["..."]}
@@ -270,14 +281,14 @@ Project-specific figures stay in the project. In WaterberryFarms these are the c
 ## 7. Notebooks
 
 - **`templates/Aggregate.ipynb`:** the aggregation stage. It resolves the aggregate exp/run, loads the metrics of `replication_names(aggregate)`, writes the tables, displays the summary and the paired differences, and marks the exp/run done. Its parameters are the standard ones of a stage notebook ([DESIGN-ExpRun.md](DESIGN-ExpRun.md)). A project uses it directly or copies it.
-- **Replicated figures:** a project notebook, as today in WaterberryFarms (`MRMR-Visualize-Replicated.ipynb`). The `figure-kind` of the figure exp/run selects a plot function of Section 6 or of the project.
+- **Replicated figures:** a project notebook, as today in WaterberryFarms (`MAREX-Visualize-Replicated.ipynb`). The `figure-kind` of the figure exp/run selects a plot function of Section 6 or of the project.
 - **Flow notebooks** call `replication_entries` when the collection has an `aggregate`, and otherwise build their queue as before.
 
 ## 8. Reproducibility
 
 A replication must be a function of its exprun. Two kinds of hidden randomness break this:
 - **global RNG state:** handled by `configure_deterministic_run` for the global generators, or by passing explicit generators;
-- **wall-clock limits:** an anytime search that stops after a time limit returns results that depend on the machine and its load. WaterberryFarms found one in the MRMR planner, and replaced the time limit with a count of evaluations.
+- **wall-clock limits:** an anytime search that stops after a time limit returns results that depend on the machine and its load. WaterberryFarms found one in the MAREX planner, and replaced the time limit with a count of evaluations.
 
 The library offers a check:
 
@@ -314,16 +325,16 @@ The proposal only adds:
 
 Moving its replication code onto the library changes the project, not the library's other users:
 
-| Today (`y2027_mrmr`) | With the library |
+| Today (`y2027_marex`) | With the library |
 |---|---|
-| `robot_seed`, `write_exprun_variant`, `replication_name(s)`, `build_mrmr_2027_replicated_entries` in `src/wbf_flow.py` | `derive_seed`, `write_exprun_variant`, `replication_names`, `replication_entries`, plus two appliers in the project |
+| `robot_seed`, `write_exprun_variant`, `replication_name(s)`, `build_marex_2027_replicated_entries` in `src/wbf_flow.py` | `derive_seed`, `write_exprun_variant`, `replication_names`, `replication_entries`, plus two appliers in the project |
 | `map-seeds`, `behavior-seeds` in the aggregate exp/run | a `factors` section with codes, plus `labels` and `cluster-factor` |
 | top-level `base-run`, `behavior-seed` in the replications | the `replication` block |
 | `scenario`, `approach`, `map-seed`, `behavior-seed` at the top of `metrics.json` | `labels` and `factors` |
 | `per-robot` with `role` | `entities` with `group` |
 | columns `map_seed`, `behavior_seed`, `robots.csv` with `robot`, `role`; `n_maps`, `ci95_*_maps` | columns `map-seed`, `behavior-seed`, `entities.csv` with `entity`, `group`; `n_clusters`, `ci95_*_clusters` |
-| `mrmr_aggregate.py` | removed: the library's `aggregate.py` |
-| comparison, ranges, series and paired figures in `mrmr_graphics.py` | the library's `plots.py`; the communication and per-role figures stay |
+| `marex_aggregate.py` | removed: the library's `aggregate.py` |
+| comparison, ranges, series and paired figures in `marex_graphics.py` | the library's `plots.py`; the communication and per-role figures stay |
 
 **The migration:**
 1. Rerun the replicated flow, rather than converting the existing results. The runs are deterministic, and the current 18 replications take about 3 minutes.

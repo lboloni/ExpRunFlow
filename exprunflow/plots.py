@@ -67,8 +67,8 @@ def _grouped(tables, metrics, x, color, output_path, draw, x_values, color_value
                 if rows.empty:
                     continue
                 position = k + (i - (len(color_values) - 1) / 2) * width
-                draw(ax, position, width, rows.iloc[0], colors[i % len(colors)])
                 values = select(replications, metric=metric, **{x: xv, color: c})["value"]
+                draw(ax, position, width, rows.iloc[0], colors[i % len(colors)], values)
                 ax.scatter(position + rng.uniform(-width / 5, width / 5, len(values)), values, s=6,
                            color="black", zorder=3)
         ax.set_xticks(range(len(x_values)))
@@ -86,7 +86,7 @@ def _grouped(tables, metrics, x, color, output_path, draw, x_values, color_value
 def plot_bars(tables, metrics, x, color, output_path, x_values=None, color_values=None, lookup=None,
               colors=None, where=None, metric_labels=None):
     """Grouped bars: one panel per metric, the mean as a bar with its 95% CI, and the replications as dots"""
-    def draw(ax, position, width, row, color_value):
+    def draw(ax, position, width, row, color_value, values):
         ax.bar(position, row["mean"], width, color=color_value, yerr=_error(row), capsize=3, alpha=0.85)
     return _grouped(tables, metrics, x, color, output_path, draw, x_values, color_values, lookup, colors,
                     where, metric_labels, start_at_zero=True)
@@ -97,7 +97,7 @@ def plot_ranges(tables, metrics, x, color, output_path, x_values=None, color_val
     """Box and whiskers in the layout of plot_bars: the box is the 95% CI of the mean, with a line at the
     mean; the whiskers are the range of the replications; the dots the replications. The box and the
     whiskers are drawn independently: with few replications the CI can be wider than the range."""
-    def draw(ax, position, width, row, color_value):
+    def draw(ax, position, width, row, color_value, values):
         low, high = confidence_interval(row)
         if np.isnan(low):
             low = high = row["mean"]
@@ -109,6 +109,24 @@ def plot_ranges(tables, metrics, x, color, output_path, x_values=None, color_val
         for end in [row["min"], row["max"]]:
             ax.plot([position - box / 4, position + box / 4], [end, end], color="black", linewidth=1)
         ax.update_datalim([(position, low), (position, high), (position, row["min"]), (position, row["max"])])
+    return _grouped(tables, metrics, x, color, output_path, draw, x_values, color_values, lookup, colors,
+                    where, metric_labels, start_at_zero=False)
+
+
+def plot_boxes(tables, metrics, x, color, output_path, x_values=None, color_values=None, lookup=None,
+               colors=None, where=None, metric_labels=None):
+    """Standard box plots in the layout of plot_bars: the box spans the quartiles of the replications, with a
+    line at the median; the whiskers reach the most extreme replications within 1.5 times the interquartile
+    range of the box; the dots are the replications, the outliers among them"""
+    def draw(ax, position, width, row, color_value, values):
+        box = ax.boxplot([list(values)], positions=[position], widths=0.7 * width, patch_artist=True,
+                         showfliers=False, manage_ticks=False)
+        for patch in box["boxes"]:
+            patch.set(facecolor=color_value, alpha=0.5, edgecolor=color_value)
+        for line in box["medians"]:
+            line.set(color=color_value, linewidth=2)
+        for line in box["whiskers"] + box["caps"]:
+            line.set(color="black", linewidth=1)
     return _grouped(tables, metrics, x, color, output_path, draw, x_values, color_values, lookup, colors,
                     where, metric_labels, start_at_zero=False)
 

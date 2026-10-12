@@ -36,10 +36,21 @@ def replication_name(base_run, factor_values, codes):
 
 
 def factor_combinations(aggregate):
-    """Every combination of the factor values, as dicts, in a fixed order (the last factor fastest)"""
+    """The combinations of the factor values of the replications, as dicts. Without a replication count, 
+    every combination, in a fixed order (the last factor fastest). With replications: N in the aggregate 
+    (a partial experiment), the first N combinations in the spread order, where the first factor varies 
+    fastest: a prefix covers as many values of the first factor as possible (e.g. 3 different maps rather 
+    than 3 behaviors on one map), and a larger N extends a smaller one, so an experiment can be continued."""
     items = factor_items(aggregate)
     names = [name for name, _, _ in items]
-    return [dict(zip(names, values)) for values in itertools.product(*[values for _, _, values in items])]
+    count = aggregate.get("replications") if hasattr(aggregate, "get") else None
+    if count is None:
+        return [dict(zip(names, values)) for values in itertools.product(*[values for _, _, values in items])]
+    spread = [dict(zip(names, reversed(values)))
+              for values in itertools.product(*[values for _, _, values in reversed(items)])]
+    if not 1 <= int(count) <= len(spread):
+        raise ValueError(f"replications: {count} is not between 1 and the {len(spread)} combinations of the factors")
+    return spread[:int(count)]
 
 
 def replication_names(aggregate):
@@ -47,6 +58,35 @@ def replication_names(aggregate):
     codes = [code for _, code, _ in factor_items(aggregate)]
     return [replication_name(run, list(combination.values()), codes)
             for run in aggregate["runs"] for combination in factor_combinations(aggregate)]
+
+
+def set_replications(family, run, count, config=None):
+    """Set the replication count of the aggregate exp/run in the active exprun path (the flow workspace): 
+    replications: count runs the first count replications of every base run (factor_combinations), None 
+    runs all of them. Refuses to write into the built-in tree, like write_exprun_variant."""
+    if config is None:
+        config = Config()
+    exprun_path = pathlib.Path(config.get_exprun_path())
+    internal = getattr(config, "exprun_path_internal", None)
+    if internal is not None and exprun_path.resolve() == pathlib.Path(internal).resolve():
+        raise Exception("set_replications does not write into the built-in exp/run tree")
+    path = exprun_path / family / f"{run}.yaml"
+    with open(path) as f:
+        text = f.read()
+    # the line is replaced or appended, so that the rest of the file, with its comments, stays as it is
+    lines = [line for line in text.splitlines() if not line.startswith("replications:")]
+    if count is not None:
+        lines.append(f"replications: {int(count)} # set by exprunflow.replication.set_replications")
+    with open(path, "w") as f:
+        f.write("\n".join(lines) + "\n")
+
+
+def without_completed(entries, config=None):
+    """The flow entries whose exp/run has no completed result with the same configuration (is_completed),
+    e.g. to continue an experiment without repeating the runs it already has"""
+    if config is None:
+        config = Config()
+    return [entry for entry in entries if not is_completed(entry["experiment"], entry["run"], config)]
 
 
 def write_exprun_variant(family, run, changes, new_run, config=None):
@@ -145,11 +185,17 @@ def replication_entries(collection, appliers, creation_style, config=None):
     """The flow entries of a replicated collection: the queued dependency variants, the replications, the
     aggregation, and the figures, in this order. The collection names the run experiment, the aggregate
     (aggregate-experiment, aggregate), and the figures (figure-experiment, figures); the figures must draw
-    the aggregate."""
+    the aggregate. Optionally, replications: N runs only the first N replications of every base run (it is 
+    written into the aggregate in the workspace, so the aggregation sees the same replications), and 
+    skip-completed: true leaves out the replications that already have a completed result: together they 
+    continue a partial experiment to more replications."""
     if config is None:
         config = Config()
     run_experiment = collection["run-experiment"]
     aggregate_experiment = collection["aggregate-experiment"]
+    # a replication count of the collection overrides that of the aggregate (a partial experiment)
+    if collection.get("replications") is not None:
+        set_replications(aggregate_experiment, collection["aggregate"], collection["replications"], config)
     aggregate = config.get_experiment(aggregate_experiment, collection["aggregate"], create_data_dir=False)
     if aggregate["source-experiment"] != run_experiment:
         raise Exception(f"The aggregate {collection['aggregate']} replicates {aggregate['source-experiment']}, "

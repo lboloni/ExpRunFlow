@@ -75,6 +75,17 @@ class TestSeedsAndNames(unittest.TestCase):
                                                     "behavior-seed": {"code": "b", "values": [7]}}}
         self.assertEqual(replication_names(aggregate), ["a-m1-b7", "a-m2-b7", "b-m1-b7", "b-m2-b7"])
 
+    def test_a_partial_experiment_spreads_over_the_first_factor(self):
+        aggregate = {"runs": ["a"], "factors": {"map-seed": {"code": "m", "values": [1, 2, 3]},
+                                               "behavior-seed": {"code": "b", "values": [7, 8]}}}
+        self.assertEqual(replication_names({**aggregate, "replications": 4}), ["a-m1-b7", "a-m2-b7", "a-m3-b7", "a-m1-b8"])
+        # a larger count extends a smaller one, and the full count has every combination
+        self.assertEqual(replication_names({**aggregate, "replications": 2}), ["a-m1-b7", "a-m2-b7"])
+        self.assertEqual(sorted(replication_names({**aggregate, "replications": 6})), sorted(replication_names(aggregate)))
+        for count in [0, 7]:
+            with self.assertRaises(ValueError):
+                replication_names({**aggregate, "replications": count})
+
 
 class TestExpansion(unittest.TestCase):
     def setUp(self):
@@ -162,6 +173,32 @@ class TestExpansion(unittest.TestCase):
             ("Prepare", "e-m2"), ("Run", "a-m2-b5"), ("Run", "b-m1-b5"), ("Run", "b-m2-b5"),
             ("Aggregate", "all"), ("Figure", "f")])
 
+    def test_a_partial_experiment_is_continued_without_repeating_its_runs(self):
+        from exprunflow.replication import set_replications, without_completed
+        write_yaml(self.expruns / "flow" / "all.yaml", {**self.load("flow", "all"), "replications": 1})
+        flow = self.config.get_experiment("flow", "all", create_data_dir=False)
+        entries = replication_entries(flow, self.appliers, "discard-old", self.config)
+        self.assertEqual([(e["name"].split()[0], e["run"]) for e in entries], [
+            ("Prepare", "e-m1"), ("Run", "a-m1-b5"), ("Run", "b-m1-b5"), ("Aggregate", "all"), ("Figure", "f")])
+        # the count is written into the aggregate, with its other values, so the aggregation sees the same replications
+        aggregate = self.load("agg", "all")
+        self.assertEqual((aggregate["replications"], aggregate["runs"]), (1, ["a", "b"]))
+        for family, run in [("env", "e-m1"), ("run", "a-m1-b5"), ("run", "b-m1-b5")]:
+            exp = self.config.get_experiment(family, run)
+            write_yaml(exp.data_dir() / "exprun.yaml", {**dict(exp), "time_done": "2026-10-12 20:00:00"})
+        # continued to every replication: only the new ones run
+        write_yaml(self.expruns / "flow" / "all.yaml", {**self.load("flow", "all"), "replications": 2, "skip-completed": True})
+        flow = self.config.get_experiment("flow", "all", create_data_dir=False)
+        entries = replication_entries(flow, self.appliers, "discard-old", self.config)
+        self.assertEqual([(e["name"].split()[0], e["run"]) for e in entries], [
+            ("Prepare", "e-m2"), ("Run", "a-m2-b5"), ("Run", "b-m2-b5"), ("Aggregate", "all"), ("Figure", "f")])
+        self.assertEqual(self.load("agg", "all")["replications"], 2)
+        # without_completed is the same test for any entries; None removes the count
+        self.assertEqual([e["run"] for e in without_completed(
+            [{"experiment": "run", "run": "a-m1-b5"}, {"experiment": "run", "run": "a-m2-b5"}], self.config)], ["a-m2-b5"])
+        set_replications("agg", "all", None, self.config)
+        self.assertNotIn("replications", self.load("agg", "all"))
+
     def test_figures_must_draw_the_aggregate(self):
         write_yaml(self.expruns / "fig" / "f.yaml", {"source-experiment": "run", "source-runs": ["a"],
                                                     "input-to-notebook": ["Figure.ipynb"]})
@@ -241,7 +278,7 @@ class TestAggregation(unittest.TestCase):
         import matplotlib
         matplotlib.use("Agg")
         from exprunflow.aggregate import aggregate_tables
-        from exprunflow.plots import plot_bars, plot_paired, plot_ranges, plot_series
+        from exprunflow.plots import plot_bars, plot_boxes, plot_paired, plot_ranges, plot_series
         metrics = synthetic_metrics()
         for m in metrics:
             m["labels"]["map"] = "one"
@@ -251,10 +288,11 @@ class TestAggregation(unittest.TestCase):
             d = pathlib.Path(directory)
             plot_bars(tables, ["v"], "map", "approach", d / "bars.pdf")
             plot_ranges(tables, ["v"], "map", "approach", d / "ranges.pdf", where={"map": "one"})
+            plot_boxes(tables, ["v"], "map", "approach", d / "boxes.pdf")
             plot_series(tables, "v", "map", "approach", d / "series.pdf")
             plot_paired(tables, "v", "map", "approach", d / "paired.pdf")
             self.assertEqual(sorted(p.name for p in d.iterdir()), sorted(
-                f"{n}.{e}" for n in ["bars", "ranges", "series", "paired"] for e in ["pdf", "png"]))
+                f"{n}.{e}" for n in ["bars", "ranges", "boxes", "series", "paired"] for e in ["pdf", "png"]))
 
 
 class TestCompatibility(unittest.TestCase):
