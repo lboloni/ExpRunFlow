@@ -139,6 +139,9 @@ class TestExpansion(unittest.TestCase):
             ("Run", "a-m1-b5", "Run.ipynb"), ("Run", "a-m2-b5", "Run.ipynb"),
             ("Run", "b-m1-b5", "Run.ipynb"), ("Run", "b-m2-b5", "Run.ipynb"),
             ("Aggregate", "all", "Aggregate.ipynb"), ("Figure", "f", "Figure.ipynb")])
+        # the phases of a parallel flow
+        self.assertEqual([e["phase"] for e in entries],
+                         ["prepare"] * 2 + ["run"] * 4 + ["aggregate", "figure"])
         replication = self.load("run", "b-m2-b5")
         self.assertEqual(replication["replication"], {"base-run": "b", "factors": {"map-seed": 2, "behavior-seed": 5},
                                                       "labels": {"approach": "y"}})
@@ -291,10 +294,13 @@ class TestAggregation(unittest.TestCase):
             plot_boxes(tables, ["v"], "map", "approach", d / "boxes.pdf")
             plot_boxes(tables, ["v"], "map", "approach", d / "panels.pdf", start_at_zero=True,
                        panels=[{"where": {"map": "one"}, "title": "one"}, {"where": {}, "title": "all"}])
+            plot_boxes(tables, ["v"], "map", "approach", d / "grid.pdf", start_at_zero=True,
+                       panels=[[{"where": {"map": "one"}, "title": "one"}, {"where": {}, "title": "all"}],
+                               [{"where": {}, "title": "all"}]])
             plot_series(tables, "v", "map", "approach", d / "series.pdf")
             plot_paired(tables, "v", "map", "approach", d / "paired.pdf")
             self.assertEqual(sorted(p.name for p in d.iterdir()), sorted(
-                f"{n}.{e}" for n in ["bars", "ranges", "boxes", "panels", "series", "paired"] for e in ["pdf", "png"]))
+                f"{n}.{e}" for n in ["bars", "ranges", "boxes", "panels", "grid", "series", "paired"] for e in ["pdf", "png"]))
 
 
 class TestCompatibility(unittest.TestCase):

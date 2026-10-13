@@ -208,20 +208,21 @@ def replication_entries(collection, appliers, creation_style, config=None):
         queued = [(family, name) for family, name in queued if not is_completed(family, name, config)]
         replications = [r for r in replications if not is_completed(run_experiment, r["name"], config)]
 
-    def entry(prefix, family, run):
+    # the phases of a parallel flow (docs/DESIGN-Parallelization.md): the entries of a phase are independent
+    def entry(prefix, family, run, phase):
         exp = config.get_experiment(family, run, create_data_dir=False)
         return {"name": f"{prefix} {family}/{run}", "notebook": exp["input-to-notebook"][0],
-                "experiment": family, "run": run, "creation_style": creation_style}
+                "experiment": family, "run": run, "creation_style": creation_style, "phase": phase}
 
-    entries = [entry("Prepare", family, name) for family, name in queued]
-    entries += [entry("Run", run_experiment, r["name"]) for r in replications]
-    entries.append(entry("Aggregate", aggregate_experiment, collection["aggregate"]))
+    entries = [entry("Prepare", family, name, "prepare") for family, name in queued]
+    entries += [entry("Run", run_experiment, r["name"], "run") for r in replications]
+    entries.append(entry("Aggregate", aggregate_experiment, collection["aggregate"], "aggregate"))
     figure_experiment = collection["figure-experiment"]
     for figure_name in collection.get("figures", []):
         figure = config.get_experiment(figure_experiment, figure_name, create_data_dir=False)
         if figure["source-experiment"] != aggregate_experiment or list(figure["source-runs"]) != [collection["aggregate"]]:
             raise Exception(f"Figure {figure_name} does not draw the aggregate {collection['aggregate']}")
-        entries.append(entry("Figure", figure_experiment, figure_name))
+        entries.append(entry("Figure", figure_experiment, figure_name, "figure"))
     return entries
 
 

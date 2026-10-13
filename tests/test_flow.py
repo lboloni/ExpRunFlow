@@ -127,7 +127,8 @@ class TestFlowHelpers(unittest.TestCase):
         source, called_output, kwargs = calls[0]
         self.assertEqual(source, notebook)
         self.assertEqual(called_output, output)
-        self.assertEqual(kwargs["cwd"], notebook.parent)
+        self.assertNotIn("cwd", kwargs)
+        self.assertEqual(kwargs["resources"], {"metadata": {"path": str(notebook.parent)}})
         self.assertEqual(kwargs["kernel_name"], "berrypicker")
         self.assertEqual(kwargs["parameters"], {
             "experiment": "sample",

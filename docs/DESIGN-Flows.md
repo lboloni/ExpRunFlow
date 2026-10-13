@@ -108,7 +108,9 @@ it reads.
 ## Execution and failure behavior
 
 `run_flow(entries, expruns_path, results_path, notebooks_path)` executes the
-queue in order through `run_notebook()`. Each stage receives the same
+queue in order through `run_notebook()`. With `workers` greater than 1, the
+entries of a phase run concurrently; see
+[DESIGN-Parallelization.md](DESIGN-Parallelization.md). Each stage receives the same
 Papermill parameters:
 
 - `experiment`

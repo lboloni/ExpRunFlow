@@ -53,21 +53,35 @@ def _grouped(tables, metrics, x, color, output_path, draw, x_values, color_value
     """The layout of plot_bars, plot_ranges and plot_boxes: one panel per metric, the values of x on the x
     axis, one element per value of color. With panels, a list of {"where": {...}, "title": ...}, one panel
     per entry instead, for a single metric: its where is added to the common one, and the panels share
-    their vertical axis, so that they can be compared directly."""
+    their vertical axis, so that they can be compared directly. With panels as a list of rows (lists of such
+    entries), the panels form a grid, and each row shares its own vertical axis."""
     lookup, colors, metric_labels = lookup or {}, colors or DEFAULT_COLORS, metric_labels or {}
     if panels:
         if len(metrics) != 1:
             raise ValueError("Panels by where filter need exactly one metric")
-        specs = [(metrics[0], {**(where or {}), **(panel.get("where") or {})}, panel.get("title"))
-                 for panel in panels]
+        rows = panels if isinstance(panels[0], list) else [panels]
+        specs = [[(metrics[0], {**(where or {}), **(panel.get("where") or {})}, panel.get("title")) for panel in row]
+                 for row in rows]
     else:
-        specs = [(metric, where, None) for metric in metrics]
+        specs = [[(metric, where, None) for metric in metrics]]
     x_values = _values(select(tables["summary"], where), x, x_values)
     color_values = _values(select(tables["summary"], where), color, color_values)
-    width = 0.8 / len(color_values)
+    # with a single value on the x axis (e.g. one scenario per figure), the elements fill the panel and the
+    # value is not labelled, as the figure states it
+    single = len(x_values) == 1
+    width = (0.96 if single else 0.8) / len(color_values)
     rng = np.random.default_rng(0)  # the jitter of the points
-    fig, axes = plt.subplots(1, len(specs), figsize=(3.2 * len(specs), 3), squeeze=False, sharey=bool(panels))
-    for index, (ax, (metric, panel_where, title)) in enumerate(zip(axes[0], specs)):
+    columns = max(len(row) for row in specs)
+    fig, axes = plt.subplots(len(specs), columns, figsize=(3.2 * columns, 3 * len(specs)), squeeze=False,
+                             sharey="row" if panels else False)
+    cells = []
+    for r, row in enumerate(specs):
+        for c in range(columns):
+            if c < len(row):
+                cells.append((axes[r][c], row[c], c))
+            else:
+                axes[r][c].set_visible(False)
+    for ax, (metric, panel_where, title), index in cells:
         summary = select(tables["summary"], panel_where)
         replications = select(tables["replications"], panel_where)
         for i, c in enumerate(color_values):
@@ -80,22 +94,26 @@ def _grouped(tables, metrics, x, color, output_path, draw, x_values, color_value
                 draw(ax, position, width, rows.iloc[0], colors[i % len(colors)], values)
                 ax.scatter(position + rng.uniform(-width / 5, width / 5, len(values)), values, s=6,
                            color="black", zorder=3)
-        ax.set_xticks(range(len(x_values)))
-        ax.set_xticklabels([lookup.get(v, v) for v in x_values])
-        ax.set_xlim(-0.5, len(x_values) - 0.5)
+        if single:
+            ax.set_xticks([])
+            ax.set_xlim(-0.5, 0.5)
+        else:
+            ax.set_xticks(range(len(x_values)))
+            ax.set_xticklabels([lookup.get(v, v) for v in x_values])
+            ax.set_xlim(-0.5, len(x_values) - 0.5)
         if title:
             ax.set_title(title, fontsize=9)
         if not panels or index == 0:
             ax.set_ylabel(metric_labels.get(metric, metric))
     # after every panel is drawn, so that a shared axis keeps the data of all of them
     if start_at_zero:
-        for ax in axes[0]:
+        for ax, _, _ in cells:
             ax.set_ylim(bottom=0)
     # the legend above the panels, in one row, so that it never covers the data
     fig.legend(handles=[Patch(facecolor=colors[i % len(colors)], alpha=0.7, label=lookup.get(c, c))
                         for i, c in enumerate(color_values)], fontsize=8, loc="upper center",
                ncol=len(color_values), frameon=False, handlelength=1.2, columnspacing=1.0)
-    fig.tight_layout(rect=(0, 0, 1, 0.92))
+    fig.tight_layout(rect=(0, 0, 1, 1 - 0.08 / len(specs)))
     return save_figure(fig, output_path)
 
 
