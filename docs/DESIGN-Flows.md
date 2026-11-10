@@ -54,6 +54,11 @@ with `set_exprun_path()` and `set_results_path()`. It returns
 `(expruns_path, results_path, notebooks_path)`. Copying a family also copies
 its default and thus its `input-to-notebook` value.
 
+Stage notebooks that have the copy step (see
+[DESIGN-ExpRun.md](DESIGN-ExpRun.md)) copy their families again from the
+built-in tree at every stage. Built-in files then replace workspace files of
+the same name, so generated runs need names that no built-in run has.
+
 Each flow lists the families it needs explicitly: the families whose runs it
 queues or generates, and the families its stages load as components.
 

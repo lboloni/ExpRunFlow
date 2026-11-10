@@ -105,10 +105,17 @@ work while the built-in tree is active:
 - `copy_experiment(family, run=None)` copies a run, or the whole family, from
   the built-in tree.
 - `create_exprun_variant(family, run, changes, new_run_name)` resolves a
-  built-in run, applies `changes`, and writes the result as a new run.
+  run of the active (external) tree, applies `changes`, and writes the result
+  as a new run. Resolving the base run also creates its result directory.
 
-Flows do not use `copy_experiment`; `setup_flow()` copies families from the
-currently active tree (see [DESIGN-Flows.md](DESIGN-Flows.md)).
+`copy_experiment` on a whole family merges it into the external tree: a
+built-in file replaces the external file of the same name, and external
+files with other names (for example generated runs) are kept.
+
+`setup_flow()` does not use `copy_experiment`; it copies families from the
+currently active tree (see [DESIGN-Flows.md](DESIGN-Flows.md)). A stage
+notebook may use it as its copy step (see the stage notebook contract
+below).
 
 ## Configuration and result paths
 
@@ -191,6 +198,21 @@ Alternative runs are listed as commented assignments. The next cell points
 the primary exprun with
 `Config().get_experiment(experiment, run, creation_style=creation_style)`.
 Other expruns loaded as components use the default `exist-ok`.
+
+**Copy step (optional).** When `expruns_path` is given, the notebook may
+call `Config().copy_experiment(family)` after `set_exprun_path()`, for its
+own family and for the families of the components it loads. This makes the
+notebook runnable against an empty external tree, without `setup_flow()`.
+Inside a flow the step runs again at every stage, with these consequences:
+
+- the families come from the built-in tree, not from the tree that was
+  active when the flow started;
+- a run or default in the workspace that has the name of a built-in file is
+  replaced by the built-in file, so a flow must give its generated runs names
+  that no built-in run of the family has, and must not edit a copied
+  built-in run or default in place;
+- a family the flow did not list in `setup_flow()` still arrives in the
+  workspace if a stage notebook copies it.
 
 The last cell of the notebook calls `exp.done()` on the primary exprun (see
 below).
