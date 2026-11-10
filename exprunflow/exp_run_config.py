@@ -244,7 +244,7 @@ class Config:
         """Creates a variation of the experiment"""
         # we cannot do this in the internal domain
         assert self.exprun_path != self.exprun_path_internal
-        exp = self.get_experiment(exp_name, run_name)
+        exp = self.get_experiment(exp_name, run_name, create_data_dir=False)
         for key in changes:
             exp.values[key] = changes[key]
         if not new_run_name:

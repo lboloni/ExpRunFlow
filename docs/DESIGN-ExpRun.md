@@ -106,7 +106,7 @@ work while the built-in tree is active:
   the built-in tree.
 - `create_exprun_variant(family, run, changes, new_run_name)` resolves a
   run of the active (external) tree, applies `changes`, and writes the result
-  as a new run. Resolving the base run also creates its result directory.
+  as a new run. It does not create the result directory of the base run.
 
 `copy_experiment` on a whole family merges it into the external tree: a
 built-in file replaces the external file of the same name, and external

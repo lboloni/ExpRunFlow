@@ -86,6 +86,13 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(exp["run-only"], 2)
         self.assertFalse(exp.data_dir().exists())
 
+    def test_variant_does_not_create_data_of_the_base_run(self):
+        self.config.exprun_path_internal = self.root / "built-in"
+        self.config.create_exprun_variant("sample", "run", {"run-only": 5}, "variant")
+        self.assertFalse((self.data / "sample" / "run").exists())
+        exp = self.config.get_experiment("sample", "variant", create_data_dir=False)
+        self.assertEqual(exp["run-only"], 5)
+
     def test_exprun_and_results_path_api(self):
         expruns = self.root / "external-expruns"
         results = self.root / "external-results"
